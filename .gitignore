@@ -1,0 +1,4 @@
+node_modules/
+latest-spell.json
+.claude/
+.DS_Store
