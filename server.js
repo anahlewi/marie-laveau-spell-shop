@@ -30,6 +30,23 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || "";
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_KEY);
 
+// With the public key the locked-down table looks empty and refuses new spells, so flag that mix-up at startup.
+function keyRole(key) {
+  if (key.startsWith("sb_secret_")) return "secret";
+  if (key.startsWith("sb_publishable_")) return "publishable";
+  try {
+    return JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString()).role;
+  } catch {
+    return "unknown";
+  }
+}
+if (useSupabase && !["secret", "service_role"].includes(keyRole(SUPABASE_KEY))) {
+  console.warn(
+    `WARNING: SUPABASE_SECRET_KEY looks like a "${keyRole(SUPABASE_KEY)}" key. ` +
+      "Use the secret key (sb_secret_...) or the legacy service_role key, or saving spells will fail."
+  );
+}
+
 async function supabase(pathAndQuery, init = {}) {
   const headers = { apikey: SUPABASE_KEY, "Content-Type": "application/json", ...init.headers };
   // Legacy service_role keys are JWTs and also go in Authorization; new sb_secret_ keys don't.
