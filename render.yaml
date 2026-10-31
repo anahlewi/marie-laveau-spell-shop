@@ -6,3 +6,8 @@ services:
     buildCommand: "true"
     startCommand: node server.js
     healthCheckPath: /receipt
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false

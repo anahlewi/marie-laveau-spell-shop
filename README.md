@@ -14,9 +14,17 @@ No dependencies. Needs Node 18+.
 npm start   # http://localhost:3000
 ```
 
+## Storage
+
+Spells are saved in Supabase when `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set, and in a local `latest-spell.json` file otherwise.
+
+1. In the Supabase dashboard, open **SQL Editor** and run [`supabase.sql`](supabase.sql).
+2. From **Project Settings → API**, copy the project URL and a secret key (or the legacy `service_role` key). Keep the secret key on the server only.
+
 ## Deploy on Render
 
 1. On [render.com](https://render.com), choose **New → Blueprint** and pick this repo (it reads `render.yaml`).
-2. Write `https://<your-app>.onrender.com/cast` to the NFC tag.
+2. When asked, fill in `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
+3. Write `https://<your-app>.onrender.com/cast` to the NFC tag.
 
-The free plan sleeps after 15 minutes without visits, and waking up clears the saved spell. Point a free uptime monitor (for example UptimeRobot) at `https://<your-app>.onrender.com/receipt` every 5 minutes to keep it awake.
+The free plan sleeps after 15 minutes without visits. The spell is safe in Supabase, but the first tap after a nap can take about a minute to load. To avoid that, point a free uptime monitor (for example UptimeRobot) at `https://<your-app>.onrender.com/receipt` every 5 minutes.

@@ -24,7 +24,34 @@ const spellName = (spell) => spell.customName || SPELLS[spell.type].name;
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-function loadLatest() {
+// Spells live in Supabase when it's configured (so they survive restarts on the host),
+// and in a local JSON file otherwise.
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || "";
+const useSupabase = Boolean(SUPABASE_URL && SUPABASE_KEY);
+
+async function supabase(pathAndQuery, init = {}) {
+  const headers = { apikey: SUPABASE_KEY, "Content-Type": "application/json", ...init.headers };
+  // Legacy service_role keys are JWTs and also go in Authorization; new sb_secret_ keys don't.
+  if (SUPABASE_KEY.startsWith("eyJ")) headers.Authorization = `Bearer ${SUPABASE_KEY}`;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathAndQuery}`, { ...init, headers });
+  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
+  return res.status === 204 || res.status === 201 ? null : res.json();
+}
+
+async function loadLatest() {
+  if (useSupabase) {
+    const [row] = await supabase("spells?select=*&order=created_at.desc&limit=1");
+    if (!row) return null;
+    return {
+      id: row.order_no,
+      type: row.type,
+      customName: row.custom_name,
+      target: row.target,
+      note: row.note,
+      createdAt: row.created_at,
+    };
+  }
   try {
     return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
   } catch {
@@ -32,7 +59,22 @@ function loadLatest() {
   }
 }
 
-function saveLatest(spell) {
+async function saveLatest(spell) {
+  if (useSupabase) {
+    await supabase("spells", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        order_no: spell.id,
+        type: spell.type,
+        custom_name: spell.customName || null,
+        target: spell.target,
+        note: spell.note || null,
+        created_at: spell.createdAt,
+      }),
+    });
+    return;
+  }
   fs.writeFileSync(DATA_FILE, JSON.stringify(spell, null, 2));
 }
 
@@ -272,7 +314,7 @@ http
         const target = (body.get("target") || "").trim().slice(0, 60);
         const customName = type === "custom" ? (body.get("customName") || "").trim().slice(0, 40) : "";
         if (!SPELLS[type] || !target || (type === "custom" && !customName)) return send(res, formPage(false), 400);
-        saveLatest({
+        await saveLatest({
           id: crypto.randomInt(100000, 999999).toString(),
           type,
           customName,
@@ -284,12 +326,14 @@ http
         return res.end();
       }
       if (url.pathname === "/") return send(res, formPage(url.searchParams.has("saved")));
-      if (url.pathname === "/cast") return send(res, castPage(loadLatest()));
-      if (url.pathname === "/receipt") return send(res, receiptPage(loadLatest()));
+      if (url.pathname === "/cast") return send(res, castPage(await loadLatest()));
+      if (url.pathname === "/receipt") return send(res, receiptPage(await loadLatest()));
       send(res, page("Lost", `<div class="wrap"><h1>404</h1><p class="sub">This page has been hexed out of existence.</p></div>`), 404);
     } catch (err) {
       console.error(err);
       send(res, "Something went wrong in the cauldron.", 500);
     }
   })
-  .listen(PORT, () => console.log(`Madam Marie Laveau Shop open at http://localhost:${PORT}`));
+  .listen(PORT, () =>
+    console.log(`Madam Marie Laveau Shop open at http://localhost:${PORT} (storage: ${useSupabase ? "Supabase" : DATA_FILE})`)
+  );
